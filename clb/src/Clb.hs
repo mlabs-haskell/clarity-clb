@@ -391,7 +391,6 @@ getCurrentSlot = gets $ L.ledgerSlotNo . (^. chainState . ledgerEnv)
 
 getStakePools ::
   ( Monad m
-  , Core.EraCrypto (CardanoLedgerEra era) ~ L.StandardCrypto
   ) =>
   ClbT era m (Set (L.KeyHash 'L.StakePool L.StandardCrypto))
 getStakePools =
@@ -429,7 +428,7 @@ appendLog slot val (Log xs) = Log (xs Seq.|> (slot, val))
 -- Read
 getUtxosAt ::
   (Monad m, Core.EraTxOut (CardanoLedgerEra era)) =>
-  L.Addr (L.EraCrypto (CardanoLedgerEra era)) ->
+  L.Addr StandardCrypto ->
   ClbT era m (L.UTxO (CardanoLedgerEra era))
 getUtxosAt addr = do
   allUTxOs <- gets currentUtxoState
@@ -480,10 +479,11 @@ getGlobals :: (Monad m, IsCardanoLedgerEra era) => ClbT era m Globals
 getGlobals = do
   startTime <- gets (scSlotZeroTime . clbConfigSlotConfig . _clbConfig)
   L.mkShelleyGlobals
-      ( emulatorShelleyGenesisDefaults
-          { L.sgSystemStart = posixTimeToUTCTime startTime
-          }
-      ) <$> getEpochInfo
+    ( emulatorShelleyGenesisDefaults
+        { L.sgSystemStart = posixTimeToUTCTime startTime
+        }
+    )
+    <$> getEpochInfo
 
 {- | The main tx submission mechanism (for "as a library mode").
 Takes a transaction, validates it against the latest blockchain state.

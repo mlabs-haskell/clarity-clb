@@ -30,7 +30,6 @@ Ensures user chosen era (from Cardano.Api.Internals.Eras) is valid for usage wit
 class
   ( ledgerEra ~ CardanoLedgerEra era
   , ledgerEra ~ ShelleyLedgerEra era
-  , L.EraCrypto ledgerEra ~ L.StandardCrypto
   , L.EraTxOut ledgerEra
   , ApplyTx ledgerEra
   , Default (L.GovState ledgerEra)
