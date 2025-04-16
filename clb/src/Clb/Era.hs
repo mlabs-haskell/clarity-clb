@@ -22,6 +22,7 @@ import Cardano.Api.Shelley (
  )
 import Cardano.Ledger.Api qualified as L
 import Cardano.Ledger.Shelley.API (ApplyTx)
+import Cardano.Protocol.Crypto qualified as L
 import Data.Default (Default)
 
 {- | Helper class for constraining the 'CardanoLedgerEra' closed type family.
