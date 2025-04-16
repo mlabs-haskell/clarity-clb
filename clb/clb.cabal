@@ -83,6 +83,7 @@ library
     , cardano-ledger-core:{cardano-ledger-core, testlib}
     , cardano-ledger-mary
     , cardano-ledger-shelley
+    , cardano-protocol-tpraos
     , cardano-slotting
     , cardano-strict-containers
     , plutus-ledger-api
