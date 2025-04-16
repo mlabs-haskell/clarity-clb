@@ -22,7 +22,6 @@ import Cardano.Api.Shelley (
  )
 import Cardano.Ledger.Api qualified as L
 import Cardano.Ledger.Shelley.API (ApplyTx)
-import Cardano.Protocol.Crypto qualified as L
 import Data.Default (Default)
 
 {- | Helper class for constraining the 'CardanoLedgerEra' closed type family.
@@ -46,10 +45,10 @@ type IsCardanoLedgerEra era = IsCardanoLedgerEra' era (CardanoLedgerEra era)
 -- The `era` param should be the era to add (Mary onwards)
 -- The `ledgerEra` param should be equal to 'CardanoLedgerEra era'. Look up its
 -- definition in "Cardano.Api.Internals.Eras"
-instance IsCardanoLedgerEra' MaryEra (L.MaryEra L.StandardCrypto)
-instance IsCardanoLedgerEra' AlonzoEra (L.AlonzoEra L.StandardCrypto)
-instance IsCardanoLedgerEra' BabbageEra (L.BabbageEra L.StandardCrypto)
-instance IsCardanoLedgerEra' ConwayEra (L.ConwayEra L.StandardCrypto)
+instance IsCardanoLedgerEra' MaryEra L.MaryEra
+instance IsCardanoLedgerEra' AlonzoEra L.AlonzoEra
+instance IsCardanoLedgerEra' BabbageEra L.BabbageEra
+instance IsCardanoLedgerEra' ConwayEra L.ConwayEra
 
 -- NOTE: Add more eras here as hardforks happen.
 

@@ -150,6 +150,7 @@ import Data.Function (on)
 import Data.List
 import Data.Map qualified as M
 
+import Cardano.Ledger.State (InstantStake)
 import Data.Maybe (mapMaybe)
 import Data.Sequence (Seq (..))
 import Data.Sequence qualified as Seq
@@ -192,7 +193,11 @@ data ValidationResult era
     Success !(EmulatedLedgerState era) !(OnChainTx era)
 
 deriving stock instance
-  (IsCardanoLedgerEra era, Show (Core.Tx (CardanoLedgerEra era))) =>
+  ( IsCardanoLedgerEra era
+  , Show (Core.Tx (CardanoLedgerEra era))
+  , Show (L.CertState (C.ShelleyLedgerEra era))
+  , Show (InstantStake (C.ShelleyLedgerEra era))
+  ) =>
   Show (ValidationResult era)
 
 --------------------------------------------------------------------------------
