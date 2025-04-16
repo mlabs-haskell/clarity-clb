@@ -58,7 +58,6 @@ import Data.ByteString.Lazy qualified as BSL
 import Data.ByteString.Lazy qualified as LBS
 
 import Cardano.Api qualified as C
-import Cardano.Api.InMode qualified as C
 import Cardano.Api.Shelley qualified as C
 import Cardano.BM.Data.Trace (Trace)
 import Cardano.Ledger.Shelley.API qualified as L
@@ -104,13 +103,16 @@ import Data.Map qualified as M
 import Data.Maybe (catMaybes, listToMaybe)
 import Data.SOP.Strict (NS (S, Z))
 import Data.Void (Void)
+import Network.Mux.Types (Mode (ResponderMode))
 import Ouroboros.Consensus.Byron.Ledger.Block (ByronBlock)
-import Ouroboros.Consensus.Cardano.Block (CardanoBlock, StandardBabbage, StandardConway)
+import Ouroboros.Consensus.Cardano.Block (CardanoBlock)
+import Ouroboros.Consensus.Cardano.Block qualified as Consensus
 import Ouroboros.Consensus.HardFork.Combinator qualified as Consensus
 import Ouroboros.Consensus.Ledger.Query (Query (..))
 import Ouroboros.Consensus.Ledger.SupportsMempool (ApplyTxErr)
 import Ouroboros.Consensus.Protocol.Praos (Praos)
 import Ouroboros.Consensus.Shelley.Eras (StandardCrypto)
+import Ouroboros.Consensus.Shelley.Ledger qualified as Consensus
 import Ouroboros.Consensus.Shelley.Ledger qualified as Shelley
 import Ouroboros.Consensus.Shelley.Ledger.Block (ShelleyBlock)
 import Ouroboros.Consensus.TypeFamilyWrappers (WrapApplyTxErr (WrapApplyTxErr))
@@ -119,10 +121,10 @@ import Ouroboros.Network.Block qualified as O
 import Ouroboros.Network.IOManager (withIOManager)
 import Ouroboros.Network.Mux (
   MiniProtocolCb (MiniProtocolCb),
-  MuxMode (ResponderMode),
   RunMiniProtocol (ResponderProtocolOnly),
   RunMiniProtocolWithMinimalCtx,
   mkMiniProtocolCbFromPeer,
+  mkMiniProtocolCbFromPeerSt,
  )
 import Ouroboros.Network.NodeToClient (
   NodeToClientProtocols (..),
@@ -149,6 +151,7 @@ import Ouroboros.Network.Protocol.Handshake.Version (
  )
 import Ouroboros.Network.Protocol.LocalStateQuery.Server qualified as Query
 import Ouroboros.Network.Protocol.LocalStateQuery.Server qualified as StateQuery
+import Ouroboros.Network.Protocol.LocalStateQuery.Type (State (StateIdle))
 import Ouroboros.Network.Protocol.LocalTxSubmission.Server qualified as TxSubmission
 import Ouroboros.Network.Protocol.LocalTxSubmission.Type qualified as TxSubmission
 import Ouroboros.Network.Snocket (
@@ -432,12 +435,12 @@ stateQuery ::
   RunMiniProtocolWithMinimalCtx 'ResponderMode LocalAddress LBS.ByteString IO Void ()
 stateQuery trace mvChainState =
   ResponderProtocolOnly $
-    mkMiniProtocolCbFromPeer $
+    mkMiniProtocolCbFromPeerSt $
       const
         ( nullTracer
         , stateQueryCodec
-        , Query.localStateQueryServerPeer
-            (stateQueryServer trace mvChainState)
+        , StateIdle
+        , StateQuery.localStateQueryServerPeer (stateQueryServer trace mvChainState)
         )
 
 doNothingResponderProtocol ::
@@ -720,13 +723,40 @@ txSubmissionServer trace state =
     , TxSubmission.recvMsgDone = ()
     }
 
+fromConsensusGenTx ::
+  () =>
+  (Consensus.CardanoBlock StandardCrypto ~ block) =>
+  Consensus.GenTx block ->
+  C.TxInMode
+fromConsensusGenTx = \case
+  Consensus.HardForkGenTx (Consensus.OneEraGenTx (Z tx')) ->
+    C.TxInByronSpecial tx'
+  Consensus.HardForkGenTx (Consensus.OneEraGenTx (S (Z tx'))) ->
+    let Consensus.ShelleyTx _txid shelleyEraTx = tx'
+     in C.TxInMode C.ShelleyBasedEraShelley (C.ShelleyTx C.ShelleyBasedEraShelley shelleyEraTx)
+  Consensus.HardForkGenTx (Consensus.OneEraGenTx (S (S (Z tx')))) ->
+    let Consensus.ShelleyTx _txid shelleyEraTx = tx'
+     in C.TxInMode C.ShelleyBasedEraAllegra (C.ShelleyTx C.ShelleyBasedEraAllegra shelleyEraTx)
+  Consensus.HardForkGenTx (Consensus.OneEraGenTx (S (S (S (Z tx'))))) ->
+    let Consensus.ShelleyTx _txid shelleyEraTx = tx'
+     in C.TxInMode C.ShelleyBasedEraMary (C.ShelleyTx C.ShelleyBasedEraMary shelleyEraTx)
+  Consensus.HardForkGenTx (Consensus.OneEraGenTx (S (S (S (S (Z tx')))))) ->
+    let Consensus.ShelleyTx _txid shelleyEraTx = tx'
+     in C.TxInMode C.ShelleyBasedEraAlonzo (C.ShelleyTx C.ShelleyBasedEraAlonzo shelleyEraTx)
+  Consensus.HardForkGenTx (Consensus.OneEraGenTx (S (S (S (S (S (Z tx'))))))) ->
+    let Consensus.ShelleyTx _txid shelleyEraTx = tx'
+     in C.TxInMode C.ShelleyBasedEraBabbage (C.ShelleyTx C.ShelleyBasedEraBabbage shelleyEraTx)
+  Consensus.HardForkGenTx (Consensus.OneEraGenTx (S (S (S (S (S (S (Z tx')))))))) ->
+    let Consensus.ShelleyTx _txid shelleyEraTx = tx'
+     in C.TxInMode C.ShelleyBasedEraConway (C.ShelleyTx C.ShelleyBasedEraConway shelleyEraTx)
+
 submitTx ::
   (block ~ CardanoBlock StandardCrypto) =>
   Trace IO EmulatorMsg ->
   MVar (AppState C.ConwayEra) ->
   Shelley.GenTx block ->
   IO (TxSubmission.SubmitResult (ApplyTxErr block))
-submitTx trace state tx = case C.fromConsensusGenTx tx of
+submitTx trace state tx = case fromConsensusGenTx tx of
   C.TxInMode C.ShelleyBasedEraConway shelleyTx -> do
     runLogEffects trace $ do
       logInfo $ "New tx: " ++ show tx
@@ -780,11 +810,11 @@ submitTx trace state tx = case C.fromConsensusGenTx tx of
                 (S (S (S (S (S (Z (Consensus.LedgerEraInfo eraInfoConway)))))))
         )
 
-eraInfoConway :: Consensus.SingleEraInfo (ShelleyBlock (Praos StandardCrypto) StandardConway)
-eraInfoConway = Consensus.singleEraInfo (Proxy @(ShelleyBlock (Praos StandardCrypto) StandardConway))
+eraInfoConway :: Consensus.SingleEraInfo (ShelleyBlock (Praos StandardCrypto) Consensus.ConwayEra)
+eraInfoConway = Consensus.singleEraInfo (Proxy @(ShelleyBlock (Praos StandardCrypto) Consensus.ConwayEra))
 
-eraInfoBabbage :: Consensus.SingleEraInfo (ShelleyBlock (Praos StandardCrypto) StandardBabbage)
-eraInfoBabbage = Consensus.singleEraInfo (Proxy @(ShelleyBlock (Praos StandardCrypto) StandardBabbage))
+eraInfoBabbage :: Consensus.SingleEraInfo (ShelleyBlock (Praos StandardCrypto) Consensus.BabbageEra)
+eraInfoBabbage = Consensus.singleEraInfo (Proxy @(ShelleyBlock (Praos StandardCrypto) Consensus.BabbageEra))
 
 eraInfoByron :: Consensus.SingleEraInfo ByronBlock
 eraInfoByron = Consensus.singleEraInfo (Proxy @ByronBlock)
